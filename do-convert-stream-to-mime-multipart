@@ -1,0 +1,7 @@
+#!/bin/sh
+
+MIME_BOUNDARY="$1"
+JSON_TEMPLATE="$(echo "$2" | jq '{ filename: (.filename + "/FILENAME"), languageCode: .languageCode, wantOcr: .wantOcr, wantSplitByPage: .wantSplitByPage, contentType: "message/rfc822", metadata: .metadata }')"
+
+cat > input.blob
+exec /app/extract-pst "$MIME_BOUNDARY" "$JSON_TEMPLATE"

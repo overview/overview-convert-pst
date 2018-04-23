@@ -1,0 +1,9 @@
+#!/bin/sh
+
+docker run \
+         -it \
+         --rm \
+         --network overviewserver_default \
+         -e 'POLL_URL=http://overview-worker:9032/Archive' \
+         $(docker build --target=dev -q .) \
+         "$@"
