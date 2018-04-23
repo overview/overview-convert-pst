@@ -1,5 +1,5 @@
 This is an [Overview](https://github.com/overview/overview-server) converter.
-It extracts the contents of email archives to `.eml` files.
+It extracts the contents of `.pst` email archives to `.eml` files.
 
 What it does
 ============
@@ -46,13 +46,13 @@ Usage
 
 In an Overview cluster, you'll want to use the Docker container:
 
-`docker run -e POLL_URL=http://worker-url:9032/EmailArchive overview/overview-convert-email-archive:0.0.1`
+`docker run -e POLL_URL=http://worker-url:9032/Pst overview/overview-convert-pst:0.0.1`
 
 Developing
 ==========
 
 `./dev` will connect to the `overviewserver_default` network and run with
-`POLL_URL=http://overview-worker:9032/EmailArchive`.
+`POLL_URL=http://overview-worker:9032/Pst`.
 
 `docker build .` will run tests.
 
