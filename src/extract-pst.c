@@ -43,9 +43,9 @@ void      header_get_subfield(char *field, const char *subfield, char *body_subf
 char*     header_get_field(char *header, char *field);
 char*     header_end_field(char *field);
 void      header_strip_field(char *header, char *field);
-int       test_base64(char *body, size_t len);
+int       test_base64(const char *body, size_t len);
 void      find_rfc822_headers(char** extra_mime_headers);
-void      write_body_part(pst_string *body, char *mime, char *charset, char *boundary, pst_file* pst);
+void      write_pst_string(pst_string *body, char *mime, char *charset, char *boundary);
 void      write_schedule_part_data(pst_item* item, const char* sender, const char* method);
 void      write_schedule_part(pst_item* item, const char* sender, const char* boundary);
 void      write_normal_email(pst_item* item, pst_file* pst, int embedding, char** extra_mime_headers);
@@ -91,6 +91,16 @@ die(const char* message)
 }
 
 void
+output_done()
+{
+	printf(
+		"\r\n--%s\r\nContent-Disposition: form-data; name=done\r\n\r\n\r\n--%s--",
+		mime_boundary,
+		mime_boundary
+        );
+}
+
+void
 output_part(const char* name, const char* body)
 {
 	printf(
@@ -114,17 +124,22 @@ output_indexed_part(int index, const char* ext, const char* body)
 }
 
 void
-output_json(int index, const char* filename)
+output_json(int index, const char* filename, const char* content_type)
 {
-	const char* filename_pos = strstr(json_template, "FILENAME\"");
+	const char* filename_pos = strstr(json_template, "FILENAME\",");
 	if (!filename_pos) {
 		die("Expected placeholder 'FILENAME' to exist in JSON template");
 	}
 
 	output_indexed_part(index, ".json", "");
 	fwrite(json_template, sizeof(char), filename_pos - json_template, stdout);
-	fputs(filename, stdout);
-	fputs(filename_pos + strlen("FILENAME"), stdout);
+	fprintf(
+		stdout,
+		"%s\",\"contentType\":\"%s%s",
+		filename,
+		content_type,
+		filename_pos + strlen("FILENAME")
+	);
 }
 
 void
@@ -132,7 +147,7 @@ increment_and_output_progress(Progress* progress)
 {
     progress->n_processed += 1;
 	printf(
-		"\r\n--%s\r\nContent-Disposition: form-data; name=progress\r\n\r\n{\"children\":{\"nProcessed\":%d,\"nTotal\":%d}}",
+		"\r\n--%s\r\nContent-Disposition: form-data; name=progress\r\n\r\n{\"children\":{\"nProcessed\":%lu,\"nTotal\":%lu}}",
 		mime_boundary,
 		progress->n_processed,
 		progress->n_total
@@ -140,17 +155,9 @@ increment_and_output_progress(Progress* progress)
 }
 
 void
-output_json_and_blob_and_progress(int index, Progress* progress, const char* filename, const char* body)
-{
-	output_json(index, filename);
-	output_indexed_part(index, ".blob", body);
-	increment_and_output_progress(progress);
-}
-
-void
 output_appointment(int index, Progress* progress, const char* filename, pst_item* item)
 {
-    output_json(index, filename);
+    output_json(index, filename, "text/calendar");
     output_indexed_part(index, ".blob", "");
     write_appointment(item);
     increment_and_output_progress(progress);
@@ -159,7 +166,7 @@ output_appointment(int index, Progress* progress, const char* filename, pst_item
 void
 output_journal(int index, Progress* progress, const char* filename, pst_item* item)
 {
-    output_json(index, filename);
+    output_json(index, filename, "text/calendar");
     output_indexed_part(index, ".blob", "");
     write_journal(item);
     increment_and_output_progress(progress);
@@ -168,7 +175,7 @@ output_journal(int index, Progress* progress, const char* filename, pst_item* it
 void
 output_vcard(int index, Progress* progress, const char* filename, pst_item* item)
 {
-    output_json(index, filename);
+    output_json(index, filename, "text/vcard");
     output_indexed_part(index, ".blob", "");
     write_vcard(item, item->contact, item->comment.str);
     increment_and_output_progress(progress);
@@ -177,7 +184,7 @@ output_vcard(int index, Progress* progress, const char* filename, pst_item* item
 void
 output_email(int index, Progress* progress, const char* filename, pst_item* item, pst_file* pstfile)
 {
-    output_json(index, filename);
+    output_json(index, filename, "message/rfc822");
     output_indexed_part(index, ".blob", "");
     char *extra_mime_headers = NULL;
     write_normal_email(item, pstfile, 0, &extra_mime_headers);
@@ -222,8 +229,8 @@ strdup_parent_slash_num_dot_or_die(const char* parent, size_t n, const char* ext
     }
     size_t len = strlen(parent) + strlen("/") + n_digits + strlen(ext) + 1;
     char* ret = malloc_or_die(len);
-    snprintf(ret, len, "%s/%0" MIN_N_DIGITS_S "d%s", parent, n, ext);
-    ret[len] = '\0';
+    snprintf(ret, len, "%s/%0" MIN_N_DIGITS_S "lu%s", parent, n, ext);
+    ret[len - 1] = '\0';
     return ret;
 }
 
@@ -262,13 +269,6 @@ process(pst_file *pstfile, pst_item *outeritem, pst_desc_tree *d_ptr, size_t sta
 
         if (item->folder && item->file_as.str) {
             DEBUG_INFO(("Processing Folder \"%s\"\n", item->file_as.str));
-            // If this is a non-empty folder and we have not yet seen a
-            // folder, its item_count is the total number of items in the
-            // PST.
-            if (!progress->n_total && item->folder->item_count) {
-                progress->n_total = item->folder->item_count;
-            }
-
             if (d_ptr->child) {
                 //if this is a non-empty folder other than deleted items, we want to recurse into it
                 char* inner_name = strdup_parent_sep_child_or_die(outer_name, "/", item->file_as.str);
@@ -277,8 +277,8 @@ process(pst_file *pstfile, pst_item *outeritem, pst_desc_tree *d_ptr, size_t sta
             }
         } else if (item->contact && (item->type == PST_TYPE_CONTACT)) {
             DEBUG_INFO(("Processing Contact\n"));
-            char* inner_name = strdup_parent_slash_num_dot_or_die(outer_name, item_number, ".vcard");
             pst_convert_utf8_null(item, &item->comment);
+            char* inner_name = strdup_parent_slash_num_dot_or_die(outer_name, item_number, ".vcard");
             output_vcard(index, progress, inner_name, item);
             free(inner_name);
             item_number += 1;
@@ -392,8 +392,8 @@ void write_embedded_message(pst_item_attach* attach, char *boundary, pst_file* p
         if (!item->email) {
             DEBUG_WARN(("write_embedded_message: pst_parse_item returned type %d, not an email message", item->type));
         } else {
-            printf("\n--%s\n", boundary);
-            printf("Content-Type: %s\n\n", attach->mimetype.str);
+            printf("\r\n--%s\r\n", boundary);
+            printf("Content-Type: %s\r\n\r\n", attach->mimetype.str);
             write_normal_email(item, pstfile, 1, extra_mime_headers);
         }
         pst_freeItem(item);
@@ -444,41 +444,42 @@ void write_inline_attachment(pst_item_attach* attach, char *boundary, pst_file* 
         }
     }
 
-    printf("\n--%s\n", boundary);
-    if (!attach->mimetype.str) {
-        printf("Content-Type: %s\n", MIME_TYPE_DEFAULT);
-    } else {
-        printf("Content-Type: %s\n", attach->mimetype.str);
-    }
-    printf("Content-Transfer-Encoding: base64\n");
+    printf("\r\n--%s\r\n", boundary);
+    printf("Content-Type: %s\r\n", attach->mimetype.str ? attach->mimetype.str : MIME_TYPE_DEFAULT);
+    printf("Content-Transfer-Encoding: base64\r\n");
 
     if (attach->content_id.str) {
-        printf("Content-ID: <%s>\n", attach->content_id.str);
+        printf("Content-ID: <%s>\r\n", attach->content_id.str);
     }
 
     if (attach->filename2.str) {
         // use the long filename, converted to proper encoding if needed.
         // it is already utf8
-        char *escaped = quote_string(attach->filename2.str);
-        pst_rfc2231(&attach->filename2);
-        printf("Content-Disposition: attachment; \n        filename*=%s;\n", attach->filename2.str);
         // Also include the (escaped) utf8 filename in the 'filename' header directly - this is not strictly valid
         // (since this header should be ASCII) but is almost always handled correctly (and in fact this is the only
         // way to get MS Outlook to correctly read a UTF8 filename, AFAICT, which is why we're doing it).
-        printf("        filename=\"%s\"\n\n", escaped);
+        char *escaped = quote_string(attach->filename2.str);
+        pst_rfc2231(&attach->filename2);
+        printf(
+            "Content-Disposition: attachment; \r\n"
+            "        filename*=%s;\r\n"
+            "        filename=\"%s\"\r\n",
+            attach->filename2.str,
+            escaped
+        );
         free(escaped);
     }
     else if (attach->filename1.str) {
         // short filename never needs encoding
-        printf("Content-Disposition: attachment; filename=\"%s\"\n\n", attach->filename1.str);
+        printf("Content-Disposition: attachment; filename=\"%s\"\r\n", attach->filename1.str);
     }
     else {
         // no filename is inline
-        printf("Content-Disposition: inline\n\n");
+        printf("Content-Disposition: inline\r\n");
     }
+    printf("\r\n");
 
-    (void)pst_attach_to_file_base64(pst, attach, stdout);
-    printf("\n\n");
+    pst_attach_to_file_base64(pst, attach, stdout);
     DEBUG_RET();
 }
 
@@ -494,7 +495,7 @@ int  header_match(char *header, char*field) {
     return 0;
 }
 
-int  valid_headers(char *header)
+int valid_headers(char *header)
 {
     // headers are sometimes really bogus - they seem to be fragments of the
     // message body, so we only use them if they seem to be real rfc822 headers.
@@ -607,10 +608,10 @@ void header_strip_field(char *header, char *field)
 }
 
 
-int  test_base64(char *body, size_t len)
+int test_base64(const char *body, size_t len)
 {
     int b64 = 0;
-    uint8_t *b = (uint8_t *)body;
+    int8_t *b = (int8_t *)body;
     DEBUG_ENT("test_base64");
     while (len--) {
         if ((*b < 32) && (*b != 9) && (*b != 10)) {
@@ -659,32 +660,51 @@ void find_rfc822_headers(char** extra_mime_headers)
 }
 
 
-void write_body_part(pst_string *body, char *mime, char *charset, char *boundary, pst_file* pst)
+static void
+write_pst_string_with_len(
+        const char* string,
+        size_t len,
+        const char* mime,
+        const char* charset_or_null,
+        const char* boundary
+)
 {
-    DEBUG_ENT("write_body_part");
-    removeCR(body->str);
+    printf("\r\n--%s\r\n", boundary);
+
+    if (mime != NULL && charset_or_null != NULL) {
+        printf("Content-Type: %s; charset=\"%s\"\r\n", mime, charset_or_null);
+    } else if (mime != NULL) {
+        printf("Content-Type: %s\n", mime);
+    } else {
+        printf("Content-Type: application/octet-stream");
+    }
+
+    int base64 = test_base64(string, len);
+    if (base64) printf("Content-Transfer-Encoding: base64\r\n");
+
+    printf("\r\n");
+
+    if (base64) {
+        char *enc = pst_base64_encode((char*)string, len);
+        if (!enc) die("out of memory while base64-encoding");
+        fputs(enc, stdout);
+        free(enc);
+    } else {
+        fwrite(string, len, 1, stdout);
+    }
+}
+
+
+void write_pst_string(pst_string *body, char *mime, char *charset, char *boundary)
+{
+    DEBUG_ENT("write_pst_string");
     size_t body_len = strlen(body->str);
 
     if (body->is_utf8) {
             charset = "utf-8";
     }
-    int base64 = test_base64(body->str, body_len);
-    printf("\n--%s\n", boundary);
-    printf("Content-Type: %s; charset=\"%s\"\n", mime, charset);
-    if (base64) printf("Content-Transfer-Encoding: base64\n");
-    printf("\n");
-    // Any body that uses an encoding with NULLs, e.g. UTF16, will be base64-encoded here.
-    if (base64) {
-        char *enc = pst_base64_encode(body->str, body_len);
-        if (enc) {
-            fputs(enc, stdout);
-            printf("\n");
-            free(enc);
-        }
-    }
-    else {
-    	fputs(body->str, stdout);
-    }
+
+    write_pst_string_with_len(body->str, body_len, mime, charset, boundary);
     DEBUG_RET();
 }
 
@@ -715,18 +735,16 @@ void write_schedule_part(pst_item* item, const char* sender, const char* boundar
     if (!item->appointment) return;
 
     // inline appointment request
-    printf("\n--%s\n", boundary);
-    printf("Content-Type: %s; method=\"%s\"; charset=\"%s\"\n\n", "text/calendar", method, charset);
+    printf("\r\n--%s\r\n", boundary);
+    printf("Content-Type: %s; method=\"%s\"; charset=\"%s\"\r\n\r\n", "text/calendar", method, charset);
     write_schedule_part_data(item, sender, method);
-    printf("\n");
 
     // attachment appointment request
     snprintf(fname, sizeof(fname), "i%i.ics", rand());
-    printf("\n--%s\n", boundary);
-    printf("Content-Type: %s; charset=\"%s\"; name=\"%s\"\n", "text/calendar", "utf-8", fname);
-    printf("Content-Disposition: attachment; filename=\"%s\"\n\n", fname);
+    printf("\r\n--%s\r\n", boundary);
+    printf("Content-Type: %s; charset=\"%s\"; name=\"%s\"\r\n", "text/calendar", "utf-8", fname);
+    printf("Content-Disposition: attachment; filename=\"%s\"\r\n\r\n", fname);
     write_schedule_part_data(item, sender, method);
-    printf("\n");
 }
 
 
@@ -734,7 +752,6 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
 {
     char boundary[60];
     char altboundary[66];
-    char *altboundaryp = NULL;
     char body_charset[30];
     char buffer_charset[30];
     char body_report[60];
@@ -945,46 +962,39 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
     }
     printf("\n");    // end of headers, start of body
 
-    // now dump the body parts
-    if ((item->type == PST_TYPE_REPORT) && (item->email->report_text.str)) {
-        write_body_part(&item->email->report_text, "text/plain", body_charset, boundary, pst);
-        printf("\n");
-    }
+    // now dump the body parts in a multipart/alternative
+    // They go from least-preferred to most-preferred
+    printf(
+        "\r\n--%s\r\n"
+        "Content-Type: multipart/alternative;\r\n"
+        "\tboundary=\"%s\"\r\n",
+        /* extra "\r\n" not needed here: the next part will begin with \r\n. */
+        boundary,
+        altboundary
+    );
 
-    if (item->body.str && item->email->htmlbody.str) {
-        // start the nested alternative part
-        printf("\n--%s\n", boundary);
-        printf("Content-Type: multipart/alternative;\n\tboundary=\"%s\"\n", altboundary);
-        altboundaryp = altboundary;
-    }
-    else {
-        altboundaryp = boundary;
+    if ((item->type == PST_TYPE_REPORT) && (item->email->report_text.str)) {
+        write_pst_string(&item->email->report_text, "text/plain", body_charset, altboundary);
     }
 
     if (item->body.str) {
-        write_body_part(&item->body, "text/plain", body_charset, altboundaryp, pst);
+        write_pst_string(&item->body, "text/plain", body_charset, altboundary);
     }
 
     if (item->email->htmlbody.str) {
-        write_body_part(&item->email->htmlbody, "text/html", body_charset, altboundaryp, pst);
-    }
-
-    if (item->body.str && item->email->htmlbody.str) {
-        // end the nested alternative part
-        printf("\n--%s--\n", altboundary);
+        write_pst_string(&item->email->htmlbody, "text/html", body_charset, altboundary);
     }
 
     if (item->email->rtf_compressed.data) {
-        pst_item_attach* attach = (pst_item_attach*)malloc_or_die(sizeof(pst_item_attach));
-        DEBUG_INFO(("Adding RTF body as attachment\n"));
-        memset(attach, 0, sizeof(pst_item_attach));
-        attach->next = item->attach;
-        item->attach = attach;
-        attach->data.data         = pst_lzfu_decompress(item->email->rtf_compressed.data, item->email->rtf_compressed.size, &attach->data.size);
-        attach->filename2.str     = strdup(RTF_ATTACH_NAME);
-        attach->filename2.is_utf8 = 1;
-        attach->mimetype.str      = strdup(RTF_ATTACH_TYPE);
-        attach->mimetype.is_utf8  = 1;
+        size_t size;
+        char* rtf_data = pst_lzfu_decompress(
+            item->email->rtf_compressed.data,
+            item->email->rtf_compressed.size,
+            &size
+        );
+        if (!rtf_data) die("out of memory while decompressing RTF message body");
+        write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", altboundary);
+        free(rtf_data);
     }
 
     if (item->email->encrypted_body.data) {
@@ -1008,6 +1018,8 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
         attach->data.size = item->email->encrypted_htmlbody.size;
         item->email->encrypted_htmlbody.data = NULL;
     }
+
+    printf("\r\n--%s--", altboundary);
 
     if (item->type == PST_TYPE_SCHEDULE) {
         write_schedule_part(item, sender, boundary);
@@ -1034,12 +1046,12 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
                 write_embedded_message(attach, boundary, pst, extra_mime_headers);
             }
             else if (attach->data.data || attach->i_id) {
-		write_inline_attachment(attach, boundary, pst);
+                write_inline_attachment(attach, boundary, pst);
             }
         }
     }
 
-    printf("\n--%s--\n\n", boundary);
+    printf("\r\n--%s--\r\n\r\n", boundary);
     DEBUG_RET();
 }
 
@@ -1241,7 +1253,6 @@ void write_journal(pst_item* item)
     pst_convert_utf8_null(item, &item->body);
 
     printf("BEGIN:VJOURNAL\n");
-    printf("DTSTAMP:%s\n",                     pst_rfc2445_datetime_format_now(sizeof(time_buffer), time_buffer));
     if (item->create_date)
         printf("CREATED:%s\n",                 pst_rfc2445_datetime_format(item->create_date, sizeof(time_buffer), time_buffer));
     if (item->modify_date)
@@ -1270,7 +1281,6 @@ void write_appointment(pst_item* item)
     pst_convert_utf8_null(item, &appointment->location);
 
     printf("UID:%#"PRIx64"\n", item->block_id);
-    printf("DTSTAMP:%s\n",                     pst_rfc2445_datetime_format_now(sizeof(time_buffer), time_buffer));
     if (item->create_date)
         printf("CREATED:%s\n",                 pst_rfc2445_datetime_format(item->create_date, sizeof(time_buffer), time_buffer));
     if (item->modify_date)
@@ -1310,20 +1320,14 @@ void write_appointment(pst_item* item)
             if (rdata->monthofyear) printf(";BYMONTH=%d",    rdata->monthofyear);
             if (rdata->position)    printf(";BYSETPOS=%d",   rdata->position);
             if (rdata->bydaymask) {
-                char byday[40];
-                int  empty = 1;
-                int i=0;
-                memset(byday, 0, sizeof(byday));
-                for (i=0; i<6; i++) {
+                int empty = 1;
+                for (int i = 0; i < 7; i++) {
                     int bit = 1 << i;
                     if (bit & rdata->bydaymask) {
-                        char temp[40];
-                        snprintf(temp, sizeof(temp), "%s%s%s", byday, (empty) ? ";BYDAY=" : ";", days[i]);
-                        strcpy(byday, temp);
-                        empty = 0;
+                    	printf("%s%s", empty ? ";BYDAY=" : ",", days[i]);
+                    	empty = 0;
                     }
                 }
-                printf("%s", byday);
             }
             printf("\n");
             pst_free_recurrence(rdata);
@@ -1377,6 +1381,24 @@ void write_appointment(pst_item* item)
 }
 
 
+static size_t
+count_items_in_top_of_folders(pst_file* pstfile, pst_desc_tree* d_ptr)
+{
+    size_t n = 0;
+
+    // No need to recurse: top-level folders count all children (right? TODO check)
+    for (pst_desc_tree *child = d_ptr->child; child != NULL; child = child->next) {
+        pst_item* item = pst_parse_item(pstfile, child, NULL);
+        if (item->folder && item->file_as.str && item->folder->item_count) {
+            n += item->folder->item_count;
+        }
+        pst_freeItem(item);
+    }
+
+    return n;
+}
+
+
 int main(int argc, char* const* argv) {
     pst_item *item = NULL;
     pst_desc_tree *d_ptr;
@@ -1421,13 +1443,14 @@ int main(int argc, char* const* argv) {
 
     Progress progress;
     progress.n_processed = 0;
-    progress.n_total = (item->folder) ? item->folder->item_count : 0;
+    progress.n_total = count_items_in_top_of_folders(&pstfile, d_ptr);
 
     process(&pstfile, item, d_ptr->child, 0, "", &progress);    // do the children of TOPF
+
+    output_done();
 
     pst_freeItem(item);
     pst_close(&pstfile);
 
     return 0;
 }
-

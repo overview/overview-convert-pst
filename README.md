@@ -57,6 +57,16 @@ Developing
 
 `docker build .` will run tests.
 
+To run valgrind:
+
+1. Edit `Makefile` to enable debugging (just change which lines are commented)
+1. `docker build .` and find the latest working Docker image ID
+1. `docker run -it --rm --privileged IMAGE_ID`
+1. `cd test/test-XXX`
+1. `apk add --update gdb valgrind`
+1. To debug a crash: `gdb --args /app/extract-pst MIME-BOUNDARY '{"filename":"FILENAME","foo":"bar"}'`
+1. To check for memory leaks: `valgrind /app/extract-pst MIME-BOUNDARY '{"filename":"FILENAME","foo":"bar"}'`
+
 Design decisions
 ----------------
 

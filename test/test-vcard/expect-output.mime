@@ -1,0 +1,37 @@
+
+--MIME-BOUNDARY
+Content-Disposition: form-data; name=0.json
+
+{
+  "filename": "input.pst/Calendar/0001.ics",
+  "languageCode": "en",
+  "wantOcr": true,
+  "wantSplitByPage": true,
+  "contentType": "message/rfc822",
+  "metadata": {
+    "foo": "bar"
+  }
+}
+--MIME-BOUNDARY
+Content-Disposition: form-data; name=0.blob
+
+UID:0x48c
+CREATED:20040817T144049Z
+LAST-MOD:20040824T194233Z
+SUMMARY:Updated: Olympus training for new hires
+DESCRIPTION:Patty will provide Olympus training to the latest new hires.  Please make sure your employee(s) have access to a computer and log onto WebEx using the information I sent last week.\n
+DTSTART;VALUE=DATE-TIME:20040819T183000Z
+DTEND;VALUE=DATE-TIME:20040819T193000Z
+STATUS:TENTATIVE
+CATEGORIES:NONE
+END:VEVENT
+
+--MIME-BOUNDARY
+Content-Disposition: form-data; name=progress
+
+{"children":{"nProcessed":1,"nTotal":1}}
+--MIME-BOUNDARY
+Content-Disposition: form-data; name=done
+
+
+--MIME-BOUNDARY--

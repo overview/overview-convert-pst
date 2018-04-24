@@ -4,6 +4,6 @@ docker run \
          -it \
          --rm \
          --network overviewserver_default \
-         -e 'POLL_URL=http://overview-worker:9032/Archive' \
+         -e 'POLL_URL=http://overview-worker:9032/Pst' \
          $(docker build --target=dev -q .) \
          "$@"
