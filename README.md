@@ -17,8 +17,9 @@ multipart messages:
 * This program's output is a _sequence_ of `.eml` files, and that _sequence_
   is encoded as `multipart/form-data`, which is a MIME multipart message
   separated by `--DIFFERENT-RANDOM-BOUNDARY` boundaries.
-
-The output may look something like:
+  
+Outlook doesn't store messages as they were received, so this converter does
+both MIME encodings. The output may look something like:
 
 ```
 HTTP message
