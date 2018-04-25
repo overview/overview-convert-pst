@@ -39,7 +39,7 @@ RUN \
   && curl -o - ftp://xmlsoft.org/libxml2/libxml2-${LIBXML2_VERSION}.tar.gz | tar zxf - \
   && cd libxml2-${LIBXML2_VERSION} \
   && ./configure --without-python \
-  && make -j4 install
+  && make -j4 && make install
 # libgsf: alpine doesn't statically link it in libgsf-dev, so we'll compile
 # it manually.
 ENV LIBGSF_VERSION=1.14.43
@@ -49,7 +49,7 @@ RUN \
   && curl -o - --location http://ftp.gnome.org/pub/gnome/sources/libgsf/1.14/libgsf-${LIBGSF_VERSION}.tar.xz | tar Jxf - \
   && cd libgsf-${LIBGSF_VERSION} \
   && ./configure \
-  && make -j4 install
+  && make -j4 && make install
 # Install libpst
 ENV LIBPST_VERSION=0.6.71
 RUN \
@@ -58,7 +58,7 @@ RUN \
   && curl -o - http://www.five-ten-sg.com/libpst/packages/libpst-${LIBPST_VERSION}.tar.gz | tar zxf - \
   && cd libpst-${LIBPST_VERSION} \
   && ./configure --disable-python --enable-libpst-shared \
-  && make -j4 install
+  && make -j4 && make install
 # Build
 WORKDIR /build/convert-emailarchive
 COPY Makefile Makefile
