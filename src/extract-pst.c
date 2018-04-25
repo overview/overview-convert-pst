@@ -978,7 +978,7 @@ void write_normal_email(pst_item* item, pst_file* pst, int mime_depth, char** ex
          * more interested in the HTML that led to it. Don't output the RTF if
          * we already output the original HTML.
          */
-         if (item->email->htmlbody.str && NULL == memmem(rtf_data, size, "\\htmltag", 8)) {
+         if ((!item->body.str && !item->email->htmlbody.str) || NULL == memmem(rtf_data, size, "\\htmltag", 8)) {
              // There's no original HTML
              write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", mime_alternative_depth);
          }
