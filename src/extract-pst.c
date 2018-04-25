@@ -35,8 +35,8 @@ size_t    process(pst_file *pstfile, pst_item *outeritem, pst_desc_tree *d_ptr, 
 void      removeCR(char *c);
 void      usage();
 char*     my_stristr(char *haystack, char *needle);
-void      write_embedded_message(pst_item_attach* attach, char *boundary, pst_file* pstfile, char** extra_mime_headers);
-void      write_inline_attachment(pst_item_attach* attach, char *boundary, pst_file* pst);
+void      write_embedded_message(pst_item_attach* attach, int mime_depth, pst_file* pstfile, char** extra_mime_headers);
+void      write_inline_attachment(pst_item_attach* attach, int mime_depth, pst_file* pst);
 int       valid_headers(char *header);
 void      header_has_field(char *header, char *field, int *flag);
 void      header_get_subfield(char *field, const char *subfield, char *body_subfield, size_t size_subfield);
@@ -45,35 +45,21 @@ char*     header_end_field(char *field);
 void      header_strip_field(char *header, char *field);
 int       test_base64(const char *body, size_t len);
 void      find_rfc822_headers(char** extra_mime_headers);
-void      write_pst_string(pst_string *body, char *mime, char *charset, char *boundary);
-void      write_schedule_part_data(pst_item* item, const char* sender, const char* method);
-void      write_schedule_part(pst_item* item, const char* sender, const char* boundary);
-void      write_normal_email(pst_item* item, pst_file* pst, int embedding, char** extra_mime_headers);
+void      write_pst_string(pst_string *body, char *mime, char *charset, int mime_depth);
+void      write_schedule_part(pst_item* item, const char* sender, int mime_depth);
+void      write_normal_email(pst_item* item, pst_file* pst, int mime_depth, char** extra_mime_headers);
 void      write_vcard(pst_item *item, pst_item_contact* contact, char comment[]);
 int       write_extra_categories(pst_item* item);
 void      write_journal(pst_item* item);
 void      write_appointment(pst_item *item);
 char*     quote_string(char *inp);
 
-const char*  prog_name;
 static size_t MIN_N_DIGITS = 4;
 #define MIN_N_DIGITS_S "4"
 
 // default mime-type for attachments that have a null mime-type
 #define MIME_TYPE_DEFAULT "application/octet-stream"
 #define RFC822            "message/rfc822"
-
-// Output type mode flags
-#define OTMODE_EMAIL        1
-#define OTMODE_APPOINTMENT  2
-#define OTMODE_JOURNAL      4
-#define OTMODE_CONTACT      8
-
-// output settings for RTF bodies
-// filename for the attachment
-#define RTF_ATTACH_NAME "rtf-body.rtf"
-// mime type for the attachment
-#define RTF_ATTACH_TYPE "application/rtf"
 
 const char* mime_boundary;
 const char* json_template;
@@ -187,7 +173,7 @@ output_email(int index, Progress* progress, const char* filename, pst_item* item
     output_json(index, filename, "message/rfc822");
     output_indexed_part(index, ".blob", "");
     char *extra_mime_headers = NULL;
-    write_normal_email(item, pstfile, 0, &extra_mime_headers);
+    write_normal_email(item, pstfile, 1, &extra_mime_headers);
     increment_and_output_progress(progress);
 }
 
@@ -361,7 +347,7 @@ char *my_stristr(char *haystack, char *needle) {
 }
 
 
-void write_embedded_message(pst_item_attach* attach, char *boundary, pst_file* pstfile, char** extra_mime_headers)
+void write_embedded_message(pst_item_attach* attach, int mime_depth, pst_file* pstfile, char** extra_mime_headers)
 {
     pst_index_ll *ptr;
     DEBUG_ENT("write_embedded_message");
@@ -392,9 +378,9 @@ void write_embedded_message(pst_item_attach* attach, char *boundary, pst_file* p
         if (!item->email) {
             DEBUG_WARN(("write_embedded_message: pst_parse_item returned type %d, not an email message", item->type));
         } else {
-            printf("\r\n--%s\r\n", boundary);
+            printf("\r\n--%s-%d\r\n", mime_boundary, mime_depth);
             printf("Content-Type: %s\r\n\r\n", attach->mimetype.str);
-            write_normal_email(item, pstfile, 1, extra_mime_headers);
+            write_normal_email(item, pstfile, mime_depth + 1, extra_mime_headers);
         }
         pst_freeItem(item);
     }
@@ -429,7 +415,7 @@ char *quote_string(char *inp) {
     return res;
 }
 
-void write_inline_attachment(pst_item_attach* attach, char *boundary, pst_file* pst)
+void write_inline_attachment(pst_item_attach* attach, int mime_depth, pst_file* pst)
 {
     DEBUG_ENT("write_inline_attachment");
     DEBUG_INFO(("Attachment Size is %#"PRIx64", data = %#"PRIxPTR", id %#"PRIx64"\n", (uint64_t)attach->data.size, attach->data.data, attach->i_id));
@@ -444,7 +430,7 @@ void write_inline_attachment(pst_item_attach* attach, char *boundary, pst_file* 
         }
     }
 
-    printf("\r\n--%s\r\n", boundary);
+    printf("\r\n--%s-%d\r\n", mime_boundary, mime_depth);
     printf("Content-Type: %s\r\n", attach->mimetype.str ? attach->mimetype.str : MIME_TYPE_DEFAULT);
     printf("Content-Transfer-Encoding: base64\r\n");
 
@@ -666,10 +652,10 @@ write_pst_string_with_len(
         size_t len,
         const char* mime,
         const char* charset_or_null,
-        const char* boundary
+        int mime_depth
 )
 {
-    printf("\r\n--%s\r\n", boundary);
+    printf("\r\n--%s-%d\r\n", mime_boundary, mime_depth);
 
     if (mime != NULL && charset_or_null != NULL) {
         printf("Content-Type: %s; charset=\"%s\"\r\n", mime, charset_or_null);
@@ -695,7 +681,7 @@ write_pst_string_with_len(
 }
 
 
-void write_pst_string(pst_string *body, char *mime, char *charset, char *boundary)
+void write_pst_string(pst_string *body, char *mime, char *charset, int mime_depth)
 {
     DEBUG_ENT("write_pst_string");
     size_t body_len = strlen(body->str);
@@ -704,17 +690,28 @@ void write_pst_string(pst_string *body, char *mime, char *charset, char *boundar
             charset = "utf-8";
     }
 
-    write_pst_string_with_len(body->str, body_len, mime, charset, boundary);
+    write_pst_string_with_len(body->str, body_len, mime, charset, mime_depth);
     DEBUG_RET();
 }
 
 
-void write_schedule_part_data(pst_item* item, const char* sender, const char* method)
+void write_schedule_part(pst_item* item, const char* sender, int mime_depth)
 {
-    printf("BEGIN:VCALENDAR\n");
-    printf("PRODID:LibPST\n");
-    if (method) printf("METHOD:%s\n", method);
-    printf("BEGIN:VEVENT\n");
+    const char* method  = "REQUEST";
+    const char* charset = "utf-8";
+    if (!item->appointment) return;
+
+    printf("\r\n--%s-%d\r\n", mime_boundary, mime_depth);
+    printf("Content-Type: %s; charset=\"%s\"; name=\"appointment.ics\"\r\n", "text/calendar", "utf-8");
+    printf("Content-Disposition: attachment; filename=\"appointment.ics\"\r\n\r\n");
+
+    printf(
+        "BEGIN:VCALENDAR\n"
+        "PRODID:LibPST\n"
+        "METHOD:REQUEST\n"
+        "BEGIN:VEVENT\n"
+    );
+
     if (sender) {
         if (item->email->outlook_sender_name.str) {
             printf("ORGANIZER;CN=\"%s\":MAILTO:%s\n", item->email->outlook_sender_name.str, sender);
@@ -722,36 +719,15 @@ void write_schedule_part_data(pst_item* item, const char* sender, const char* me
             printf("ORGANIZER;CN=\"\":MAILTO:%s\n", sender);
         }
     }
+
     write_appointment(item);
+
     printf("END:VCALENDAR\n");
 }
 
 
-void write_schedule_part(pst_item* item, const char* sender, const char* boundary)
+void write_normal_email(pst_item* item, pst_file* pst, int mime_depth, char** extra_mime_headers)
 {
-    const char* method  = "REQUEST";
-    const char* charset = "utf-8";
-    char fname[30];
-    if (!item->appointment) return;
-
-    // inline appointment request
-    printf("\r\n--%s\r\n", boundary);
-    printf("Content-Type: %s; method=\"%s\"; charset=\"%s\"\r\n\r\n", "text/calendar", method, charset);
-    write_schedule_part_data(item, sender, method);
-
-    // attachment appointment request
-    snprintf(fname, sizeof(fname), "i%i.ics", rand());
-    printf("\r\n--%s\r\n", boundary);
-    printf("Content-Type: %s; charset=\"%s\"; name=\"%s\"\r\n", "text/calendar", "utf-8", fname);
-    printf("Content-Disposition: attachment; filename=\"%s\"\r\n\r\n", fname);
-    write_schedule_part_data(item, sender, method);
-}
-
-
-void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** extra_mime_headers)
-{
-    char boundary[60];
-    char altboundary[66];
     char body_charset[30];
     char buffer_charset[30];
     char body_report[60];
@@ -798,10 +774,6 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
             c_time = "Thu Jan 1 00:00:00 1970";
     } else
         c_time = "Thu Jan 1 00:00:00 1970";
-
-    // create our MIME boundaries here.
-    snprintf(boundary, sizeof(boundary), "--boundary-LibPST-iamunique-%i_-_-", rand());
-    snprintf(altboundary, sizeof(altboundary), "alt-%s", boundary);
 
     // we will always look at the headers to discover some stuff
     if (headers ) {
@@ -955,34 +927,36 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
     printf("MIME-Version: 1.0\n");
     if (item->type == PST_TYPE_REPORT) {
         // multipart/report for DSN/MDN reports
-        printf("Content-Type: multipart/report; report-type=%s;\n\tboundary=\"%s\"\n", body_report, boundary);
+        printf("Content-Type: multipart/report; report-type=%s;\n\tboundary=\"%s-%d\"\n", body_report, mime_boundary, mime_depth);
     }
     else {
-        printf("Content-Type: multipart/mixed;\n\tboundary=\"%s\"\n", boundary);
+        printf("Content-Type: multipart/mixed;\n\tboundary=\"%s-%d\"\n", mime_boundary, mime_depth);
     }
     printf("\n");    // end of headers, start of body
+
+    int mime_alternative_depth = mime_depth + 1;
 
     // now dump the body parts in a multipart/alternative
     // They go from least-preferred to most-preferred
     printf(
-        "\r\n--%s\r\n"
+        "\r\n--%s-%d\r\n"
         "Content-Type: multipart/alternative;\r\n"
-        "\tboundary=\"%s\"\r\n",
+        "\tboundary=\"%s-%d\"\r\n",
         /* extra "\r\n" not needed here: the next part will begin with \r\n. */
-        boundary,
-        altboundary
+	mime_boundary, mime_depth,
+	mime_boundary, mime_alternative_depth
     );
 
     if ((item->type == PST_TYPE_REPORT) && (item->email->report_text.str)) {
-        write_pst_string(&item->email->report_text, "text/plain", body_charset, altboundary);
+        write_pst_string(&item->email->report_text, "text/plain", body_charset, mime_alternative_depth);
     }
 
     if (item->body.str) {
-        write_pst_string(&item->body, "text/plain", body_charset, altboundary);
+        write_pst_string(&item->body, "text/plain", body_charset, mime_alternative_depth);
     }
 
     if (item->email->htmlbody.str) {
-        write_pst_string(&item->email->htmlbody, "text/html", body_charset, altboundary);
+        write_pst_string(&item->email->htmlbody, "text/html", body_charset, mime_alternative_depth);
     }
 
     if (item->email->rtf_compressed.data) {
@@ -993,7 +967,7 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
             &size
         );
         if (!rtf_data) die("out of memory while decompressing RTF message body");
-        write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", altboundary);
+        write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", mime_alternative_depth);
         free(rtf_data);
     }
 
@@ -1019,10 +993,10 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
         item->email->encrypted_htmlbody.data = NULL;
     }
 
-    printf("\r\n--%s--", altboundary);
+    printf("\r\n--%s-%d--", mime_boundary, mime_alternative_depth);
 
     if (item->type == PST_TYPE_SCHEDULE) {
-        write_schedule_part(item, sender, boundary);
+        write_schedule_part(item, sender, mime_depth);
     }
 
     // other attachments
@@ -1043,15 +1017,15 @@ void write_normal_email(pst_item* item, pst_file* pst, int embedding, char** ext
                 attach->mimetype.str = strdup(RFC822);
                 attach->mimetype.is_utf8 = 1;
                 find_rfc822_headers(extra_mime_headers);
-                write_embedded_message(attach, boundary, pst, extra_mime_headers);
+                write_embedded_message(attach, mime_depth, pst, extra_mime_headers);
             }
             else if (attach->data.data || attach->i_id) {
-                write_inline_attachment(attach, boundary, pst);
+                write_inline_attachment(attach, mime_depth, pst);
             }
         }
     }
 
-    printf("\r\n--%s--\r\n\r\n", boundary);
+    printf("\r\n--%s-%d--\r\n\r\n", mime_boundary, mime_depth);
     DEBUG_RET();
 }
 
@@ -1404,10 +1378,6 @@ int main(int argc, char* const* argv) {
     pst_desc_tree *d_ptr;
     int c,x;
     char *temp = NULL;               //temporary char pointer
-    prog_name = argv[0];
-
-    time_t now = time(NULL);
-    srand((unsigned)now);
 
     mime_boundary = argv[1];
     json_template = argv[2];

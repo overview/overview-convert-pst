@@ -3,11 +3,10 @@
 Content-Disposition: form-data; name=0.json
 
 {
-  "filename": "input.pst/Calendar/0001.ics",
+  "filename": "input.pst/Calendar/0001.ics","contentType":"text/calendar",
   "languageCode": "en",
   "wantOcr": true,
   "wantSplitByPage": true,
-  "contentType": "message/rfc822",
   "metadata": {
     "foo": "bar"
   }

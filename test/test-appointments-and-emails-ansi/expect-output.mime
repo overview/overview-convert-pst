@@ -679,14 +679,14 @@ Message-Id: <F3B65EF6C1B0794AB2BDA457AF4198104E413E@hccnsw01.hepatitisc.org.au>
 X-libpst-forensic-sender: /O=HEPATITISC/OU=FIRST ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=CATRIONAE
 MIME-Version: 1.0
 Content-Type: multipart/mixed;
-	boundary="--boundary-LibPST-iamunique-1015889252_-_-"
+	boundary="MIME-BOUNDARY-1"
 
 
-----boundary-LibPST-iamunique-1015889252_-_-
+--MIME-BOUNDARY-1
 Content-Type: multipart/alternative;
-	boundary="alt---boundary-LibPST-iamunique-1015889252_-_-"
+	boundary="MIME-BOUNDARY-2"
 
---alt---boundary-LibPST-iamunique-1015889252_-_-
+--MIME-BOUNDARY-2
 Content-Type: text/plain; charset="windows-1252"
 Content-Transfer-Encoding: base64
 
@@ -716,7 +716,7 @@ YW5kIGFsdGhvdWdoIG5vIGNvbXB1dGVyIHZpcnVzZXMgd2VyZSBkZXRlY3RlZCwgdGhlIEhlcGF0
 aXRpcyBDIENvdW5jaWwgb2YgTlNXIGFjY2VwdHMgbm8gbGlhYmlsaXR5IGZvciBhbnkgY29uc2Vx
 dWVudGlhbCBkYW1hZ2UgcmVzdWx0aW5nIGZyb20gZS1tYWlscyBjb250YWluaW5nIGFueSBjb21w
 dXRlciB2aXJ1c2VzLiIqKg0KDQogDQo=
---alt---boundary-LibPST-iamunique-1015889252_-_-
+--MIME-BOUNDARY-2
 Content-Type: application/rtf; charset="utf-8"
 Content-Transfer-Encoding: base64
 
@@ -879,8 +879,8 @@ ZzY0fVxodG1scnRmIHtcaHRtbHJ0ZjAgDQp7XCpcaHRtbHRhZzg0ICZuYnNwO31caHRtbHJ0ZiBc
 J2EwXGh0bWxydGYwIHtcKlxodG1sdGFnNzJ9XGh0bWxydGZccGFyfVxodG1scnRmMA0KDQp7XCpc
 aHRtbHRhZzEwNCA8L0RJVj59XGh0bWxydGYgfVxodG1scnRmMCANCntcKlxodG1sdGFnNTggPC9C
 T0RZPn0NCntcKlxodG1sdGFnMjcgPC9IVE1MPn0NCntcKlxodG1sdGFnMyBccGFyIH19
---alt---boundary-LibPST-iamunique-1015889252_-_---
-----boundary-LibPST-iamunique-1015889252_-_---
+--MIME-BOUNDARY-2--
+--MIME-BOUNDARY-1--
 
 
 --MIME-BOUNDARY
