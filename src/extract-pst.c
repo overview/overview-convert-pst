@@ -967,9 +967,21 @@ void write_normal_email(pst_item* item, pst_file* pst, int mime_depth, char** ex
             &size
         );
         if (!rtf_data) die("out of memory while decompressing RTF message body");
-        write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", mime_alternative_depth);
-        free(rtf_data);
-    }
+        /*
+         * Outlook stores an RTF with each email. If the email arrived as HTML,
+         * Outlook transcribes it using MS-OXRTFEX.
+         * [https://msdn.microsoft.com/en-us/library/ee159984(v=exchg.80).aspx]
+         *
+         * An MS-OXRTFEX document is _derived_ data, so callers are probably
+         * more interested in the HTML that led to it. Don't output the RTF if
+         * we already output the original HTML.
+         */
+         if (item->email->htmlbody.str && NULL == memmem(rtf_data, size, "\\htmltag", 8)) {
+             // There's no original HTML
+             write_pst_string_with_len(rtf_data, size, "application/rtf", "utf-8", mime_alternative_depth);
+         }
+         free(rtf_data);
+     }
 
     if (item->email->encrypted_body.data) {
         pst_item_attach* attach = (pst_item_attach*)malloc_or_die(sizeof(pst_item_attach));
