@@ -5,6 +5,8 @@
  *            dave.s@earthcorp.com
  */
 
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
