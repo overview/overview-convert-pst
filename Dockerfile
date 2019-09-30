@@ -51,11 +51,11 @@ RUN \
   && ./configure \
   && make -j4 && make install
 # Install libpst
-ENV LIBPST_VERSION=0.6.71
+ENV LIBPST_VERSION=0.6.72
 RUN \
   mkdir -p /build \
   && cd /build \
-  && curl -o - http://www.five-ten-sg.com/libpst/packages/libpst-${LIBPST_VERSION}.tar.gz | tar zxf - \
+  && curl -o - --location http://www.five-ten-sg.com/libpst/packages/libpst-${LIBPST_VERSION}.tar.gz | tar zxf - \
   && cd libpst-${LIBPST_VERSION} \
   && ./configure --disable-python --enable-libpst-shared \
   && make -j4 && make install
